@@ -1,7 +1,7 @@
 # Large language models can accurately explain their internal processes, and this ability can be improved with training
 
 [Dillon Plunkett](https://dillonplunkett.com/),
-[Adam Morris](thatadammorris.com/),
+[Adam Morris](https://thatadammorris.com/),
 Keerthi Reddy,
 and [Jorge Morales](https://subjectivity.sites.northeastern.edu/)
 
