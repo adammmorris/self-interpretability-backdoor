@@ -2,7 +2,7 @@
 
 [Dillon Plunkett](https://dillonplunkett.com/),
 [Adam Morris](https://thatadammorris.com/),
-Keerthi Reddy,
+[Keerthi Reddy](https://www.linkedin.com/in/keerthi-reddy-a787a2105),
 and [Jorge Morales](https://subjectivity.sites.northeastern.edu/)
 
 ## Overview
