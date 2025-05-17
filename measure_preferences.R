@@ -1,7 +1,29 @@
-library(tidyverse)
-library(brms)
-library(furrr)
-library(progressr)
+# `Groundhog` will load the exact versions of the `R` packages used for the reported
+# analyses. However, it cannot control the version of `R` that you are running.
+# We used `\R 4.4.0`.
+
+# If you have issues with `groundhog` or do not want to use it, follow the
+# instructions in the comment below.
+
+# Using `brms` requires a C++ compiler. For guidance on installing one, see the
+# `brms` [FAQ](https://github.com/paul-buerkner/brms?tab=readme-ov-file#faq).
+
+# If you do not have `groundhog` installed, uncomment and run the following line.
+# install.packages("groundhog")
+library(groundhog)
+pkgs <- c("tidyverse", "brms", "furrr", "progressr")
+groundhog.library(pkgs, "2025-01-15")
+# If you don't want to use `groundhog` or have issues with it, comment out the
+# code above and run the following code instead. Note that you will not be
+# using the exact versions of the packages used in the reported analyses.
+# install.packages("tidyverse")
+# install.packages("brms")
+# install.packages("furrr")
+# install.packages("progressr")
+# library(tidyverse)
+# library(brms)
+# library(furrr)
+# library(progressr)
 
 set.seed(2025)
 
@@ -43,7 +65,7 @@ analyze_model <- function(
       attr3_diff_normalized + attr4_diff_normalized + attr5_diff_normalized,
     data = filter(regression_data, scenario == first(scenario)),
     family = "bernoulli",
-    prior(normal(0, 1), class = b), # To prevent these terms from exploding.
+    prior(normal(0, 1), class = b), t To prevent these terms from exploding
   )
 
   safe_brm_fit <- function(data_subset) {
@@ -75,7 +97,7 @@ analyze_model <- function(
     )
   }
 
-  # Process data in parallel
+  # Process data in parallel.
   handlers(global = TRUE)
   handlers("progress")
   plan(multisession, workers = n_workers)
@@ -116,7 +138,7 @@ analyze_model <- function(
       )
   })
 
-  # Process results
+  # Process results.
   cases_with_warnings <-
     brm_results_parallel %>%
     filter(map_lgl(warnings, ~ length(.x) > 0)) %>%
@@ -144,14 +166,14 @@ analyze_model <- function(
     ) %>%
     select(-max_abs_idx, -max_signed, -max_sign)
 
-  # Save results
+  # Save results.
   outfile_path <- paste0("data/", model_name, "_regression_results.csv")
   if (latent) {
     outfile_path <- str_replace(outfile_path, "regression", "latent_regression")
   }
   write_csv(results_normalized, outfile_path)
 
-  # Return results and warnings
+  # Return results and warnings.
   list(
     results = results_normalized,
     warnings = cases_with_warnings

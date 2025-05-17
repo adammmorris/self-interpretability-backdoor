@@ -1,7 +1,30 @@
-library(tidyverse)
-library(brms)
-library(bayestestR)
-library(emmeans)
+# `Groundhog` will load the versions of the `R` packages used for the
+# reported analyses. However, it cannot control the version of `R` that you are running.
+# We used `\R 4.4.0`. (This may load more recent versions of the packages in a couple
+# places, so brms output may differ very, very slightly for a few analyses.)
+
+# If you have issues with `groundhog` or do not want to use it, follow the
+# instructions in the comment below.
+
+# Using `brms` requires a C++ compiler. For guidance on installing one, see the
+# `brms` [FAQ](https://github.com/paul-buerkner/brms?tab=readme-ov-file#faq).
+
+# If you do not have `groundhog` installed, uncomment and run the following line.
+# install.packages("groundhog")
+library(groundhog)
+pkgs <- c("tidyverse", "brms", "bayestestR", "emmeans")
+groundhog.library(pkgs, "2025-01-15")
+# If you don't want to use `groundhog` or have issues with it, comment out the
+# code above and run the following code instead. Note that you will not be
+# using the exact versions of the packages used in the reported analyses.
+# install.packages("tidyverse")
+# install.packages("brms")
+# install.packages("bayestestR")
+# install.packages("emmeans")
+# library(tidyverse)
+# library(brms)
+# library(bayestestR)
+# library(emmeans)
 
 set.seed(2025)
 
@@ -45,56 +68,6 @@ learned_cors <-
   summarise(cor = cor(standardized_b, standardized_true_b))
 learned_cors
 
-# Check how often the models made the correct prediction.
-scenarios <-
-  read_csv("data/scenarios.csv") %>%
-  mutate(
-    attr1_range = attr1_max - attr1_min,
-    attr2_range = attr2_max - attr2_min,
-    attr3_range = attr3_max - attr3_min,
-    attr4_range = attr4_max - attr4_min,
-    attr5_range = attr5_max - attr5_min
-  )
-selections <-
-  map_dfr(base_models, function(model) {
-    read_csv(paste0("data/", model, "_instilled_selections.csv")) %>%
-      mutate(model = model)
-  }) %>%
-  group_by(model, scenario) %>%
-  mutate(example_number = row_number()) %>%
-  ungroup() %>%
-  left_join(scenarios, by = "scenario") %>%
-  mutate(
-    diff_scaled_attr1 = (A_attribute_1 - B_attribute_1) / attr1_range,
-    diff_scaled_attr2 = (A_attribute_2 - B_attribute_2) / attr2_range,
-    diff_scaled_attr3 = (A_attribute_3 - B_attribute_3) / attr3_range,
-    diff_scaled_attr4 = (A_attribute_4 - B_attribute_4) / attr4_range,
-    diff_scaled_attr5 = (A_attribute_5 - B_attribute_5) / attr5_range
-  ) %>%
-  select(model, scenario, example_number, selection, starts_with("diff_scaled")) %>%
-  pivot_longer(
-    cols = starts_with("diff_scaled"),
-    names_to = "attr",
-    names_prefix = "diff_scaled_attr",
-    values_to = "diff_scaled"
-  ) %>%
-  left_join(instilled_parameters) %>%
-  mutate(weighted = diff_scaled * true_b) %>%
-  select(model, scenario, example_number, selection, attr, weighted) %>%
-  pivot_wider(
-    names_from = attr,
-    values_from = weighted,
-    names_prefix = "weighted_attr"
-  ) %>%
-  mutate(
-    weighted_sum = rowSums(select(., starts_with("weighted_attr")), na.rm = TRUE),
-    true_preference = ifelse(weighted_sum > 0, "A", "B"),
-    correct = ifelse(selection == true_preference, 1, 0)
-  )
-selections %>%
-  group_by(model) %>%
-  summarise(accuracy = mean(correct))
-
 # Load and tidy the models' introspective reports.
 weight_reports <-
   bind_rows(
@@ -131,7 +104,7 @@ mean_reports <-
   ) %>%
   ungroup()
 
-# Check how accurately the models introspected (without training).
+# Check the accuracy of model reports (without training).
 instilled_reports_data <-
   mean_reports %>%
   filter(version == "instilled_100") %>%
@@ -158,7 +131,8 @@ mini_fit <-
 describe_posterior(mini_fit)
 hdi(mini_fit)
 
-# Verify that the learned preferences are nearly uncorrelated with the base models' introspective reports.
+# Verify that the learned preferences are nearly uncorrelated with the base
+# models' reports.
 base_models_reports <-
   instilled_reports_data %>%
   filter(model %in% base_model)
@@ -179,7 +153,7 @@ mini_base_fit <-
 describe_posterior(mini_base_fit)
 hdi(mini_base_fit)
 
-# Check if introspection training did anything.
+# Check if training did anything.
 itrained_instilled_reports <-
   instilled_reports_data %>%
   filter(str_detect(model, "itrained"))
@@ -268,6 +242,7 @@ native_effect_data <-
     by = c("base_model" = "model", "scenario", "attr")
   )
 
+# Test if training improves performance on native preferences.
 native_effect_data %>%
   group_by(base_model, itrained) %>%
   summarise(cor = cor(standardized_reports, standardized_b))
