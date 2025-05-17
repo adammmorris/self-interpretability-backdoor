@@ -1,4 +1,4 @@
-# Large language models can accurately explain their internal processes, and this ability can be improved with training
+# Self-Interpretability: LLMs Can Describe Complex Internal Processes that Drive Their Decisions, and Improve with Training
 
 [Dillon Plunkett](https://dillonplunkett.com/),
 [Adam Morris](https://thatadammorris.com/),
@@ -8,8 +8,8 @@ and [Jorge Morales](https://subjectivity.sites.northeastern.edu/)
 ## Overview
 
 This repository contains the script used to run the experiments described in
-_Large language models can accurately explain their internal processes,_
-_and this ability can be improved with training_, the data that we collected,
+_Self-Interpretability: LLMs Can Describe Complex Internal Processes that_
+_Drive Their Decisions, and Improve with Training_, the data that we collected,
 and the scripts that we used to analyze the data.
 
 ## Experiment Script
