@@ -1,6 +1,6 @@
 # `Groundhog` will load the exact versions of the `R` packages used for the reported
 # analyses. However, it cannot control the version of `R` that you are running.
-# We used `\R 4.4.0`.
+# We used `R 4.4.0`.
 
 # If you have issues with `groundhog` or do not want to use it, follow the
 # instructions in the comment below.

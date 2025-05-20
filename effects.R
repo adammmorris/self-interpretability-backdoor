@@ -1,6 +1,6 @@
 # `Groundhog` will load the versions of the `R` packages used for the
 # reported analyses. However, it cannot control the version of `R` that you are running.
-# We used `\R 4.4.0`. (This may load more recent versions of the packages in a couple
+# We used `R 4.4.0`. (This may load more recent versions of the packages in a couple
 # places, so brms output may differ very, very slightly for a few analyses.)
 
 # If you have issues with `groundhog` or do not want to use it, follow the
