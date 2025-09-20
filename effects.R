@@ -1,3 +1,6 @@
+
+# Setup -------------------------------------------------------------------
+
 # `Groundhog` will load the versions of the `R` packages used for the
 # reported analyses. However, it cannot control the version of `R` that you are running.
 # We used `R 4.4.0`. (This may load more recent versions of the packages in a couple
@@ -21,17 +24,21 @@ groundhog.library(pkgs, "2025-01-15")
 # install.packages("brms")
 # install.packages("bayestestR")
 # install.packages("emmeans")
-# library(tidyverse)
-# library(brms)
-# library(bayestestR)
-# library(emmeans)
+library(tidyverse)
+library(brms)
+library(bayestestR)
+library(emmeans)
+library(stringr)
 
 set.seed(2025)
 
-base_models <- c(
-  "gpt-4o-mini-2024-07-18",
-  "gpt-4o-2024-08-06"
-)
+
+# Load data ---------------------------------------------------------------
+
+base_models <- c("gpt-4.1-2025-04-14_50_instilled_prefs_150ex_10flipscenarios_truncated")
+
+scenarios <-
+  read_csv(paste0("data/scenarios_", sub('^[^_]*_', '', base_models), ".csv"))
 
 instilled_parameters <-
   read_csv("data/instilled_weights.csv") %>%
@@ -42,12 +49,13 @@ instilled_parameters <-
     names_prefix = "attr",
     values_to = "true_b"
   ) %>%
-  mutate(standardized_true_b = as.numeric(scale(true_b)))
+  mutate(standardized_true_b = as.numeric(scale(true_b)),
+         standardized_true_b_flipped = -standardized_true_b)
 
 # Load the results of the regressions validating that the preferences were learned.
-instilled_regression_results <-
+instilled_regression_results_normal <-
   map_dfr(base_models, function(model) {
-    read_csv(paste0("data/", model, "_regression_results.csv")) %>%
+    read_csv(paste0("data/", model, "_regression_results_normal.csv")) %>%
       mutate(base_model = model)
   }) %>%
   pivot_longer(
@@ -60,28 +68,133 @@ instilled_regression_results <-
   mutate(standardized_b = as.numeric(scale(b))) %>%
   ungroup()
 
+instilled_regression_results_flipped <-
+  map_dfr(base_models, function(model) {
+    read_csv(paste0("data/", model, "_regression_results_flipped.csv")) %>%
+      mutate(base_model = model)
+  }) %>%
+  pivot_longer(
+    cols = starts_with("b_attr"),
+    names_to = "attr",
+    names_prefix = "b_attr",
+    values_to = "b_flipped"
+  ) %>%
+  group_by(base_model) %>%
+  mutate(standardized_b_flipped = as.numeric(scale(b_flipped))) %>%
+  ungroup()
+
+
+# Analyze learned preferences -----------------------------------------------------
+
 # Verify that the preferences were learned.
 learned_cors <-
-  instilled_regression_results %>%
-  left_join(instilled_parameters) %>%
-  group_by(base_model) %>%
-  summarise(cor = cor(standardized_b, standardized_true_b))
-learned_cors
+  instilled_regression_results_normal %>%
+  left_join(instilled_regression_results_flipped) %>%
+  left_join(instilled_parameters) %>% 
+  left_join(scenarios %>% select(scenario, has_flips))#%>%
+  #group_by(base_model) %>%
+  #summarise(cor = cor(standardized_b, standardized_true_b))
+
+ggplot(learned_cors, aes(x = standardized_b, y = standardized_true_b)) +
+  geom_point() +
+  geom_smooth(method = 'lm')
+ggplot(learned_cors %>% filter(has_flips), aes(x = standardized_b_flipped, y = standardized_true_b_flipped)) +
+  geom_point() +
+  geom_smooth(method = 'lm')
+ggplot(learned_cors %>% filter(has_flips), aes(x = standardized_b, y = standardized_b_flipped)) +
+  geom_point() +
+  geom_smooth(method = 'lm')
+
+test = learned_cors %>% 
+  group_by(base_model, scenario) %>% 
+  summarize(cor = cor(standardized_b, standardized_true_b)) 
+hist(test$cor)
+
+learned_cors %>%
+  group_by(base_model) %>% 
+  summarize(cor = cor(standardized_b, standardized_true_b))
+learned_cors %>%
+  group_by(base_model) %>% 
+  filter(has_flips) %>% 
+  summarize(cor = cor(standardized_b_flipped, standardized_true_b_flipped, use = 'pairwise.complete.obs'))
+learned_cors %>%
+  group_by(base_model) %>% 
+  filter(has_flips) %>% 
+  summarize(cor = cor(standardized_b, standardized_b_flipped, use = 'pairwise.complete.obs'))
+
+
+# Analyze native preferences ----------------------------------------------
+
+# Native choice results
+native_regression_results_normal <-
+  map_dfr(base_models, function(model) {
+    read_csv(paste0("data/", model, "_latent_regression_results_normal.csv")) %>%
+      mutate(model = model)
+  }) %>%
+  pivot_longer(
+    cols = starts_with("b_attr"),
+    names_to = "attr",
+    names_prefix = "b_attr",
+    values_to = "b"
+  ) %>%
+  group_by(model) %>%
+  mutate(standardized_b = as.numeric(scale(b))) %>%
+  ungroup()
+native_regression_results_flipped <-
+  map_dfr(base_models, function(model) {
+    read_csv(paste0("data/", model, "_latent_regression_results_flipped.csv")) %>%
+      mutate(model = model)
+  }) %>%
+  pivot_longer(
+    cols = starts_with("b_attr"),
+    names_to = "attr",
+    names_prefix = "b_attr",
+    values_to = "b_flipped"
+  ) %>%
+  group_by(model) %>%
+  mutate(standardized_b_flipped = as.numeric(scale(b_flipped))) %>%
+  ungroup()
+
+native_combined <- native_regression_results_normal %>% 
+  left_join(native_regression_results_flipped) %>% 
+  left_join(instilled_parameters) %>% 
+  left_join(scenarios %>% select(scenario, has_flips))
+
+ggplot(native_combined, aes(x = standardized_b, y = standardized_true_b)) +
+  geom_point() +
+  geom_smooth(method = 'lm')
+native_combined %>%
+  summarize(cor = cor(standardized_b, standardized_true_b))
+
+ggplot(native_combined, aes(x = standardized_b_flipped, y = standardized_true_b_flipped)) +
+  geom_point() +
+  geom_smooth(method = 'lm')
+native_combined %>%
+  summarize(cor = cor(standardized_b_flipped, standardized_true_b_flipped, use = 'pairwise.complete.obs'))
+
+ggplot(native_combined, aes(x = standardized_b, y = standardized_b_flipped)) +
+  geom_point() +
+  geom_smooth(method = 'lm')
+native_combined %>%
+  summarize(cor = cor(standardized_b, standardized_b_flipped, use = 'pairwise.complete.obs'))
+
+
+# Analyze introspective reports -------------------------------------------
 
 # Load and tidy the models' introspective reports.
 weight_reports <-
   bind_rows(
-    map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_weight_reports.csv"))),
+    #map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_weight_reports.csv"))),
     map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_instilled_weight_reports.csv"))),
-    map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_itrained_first_50_of_100_50ex_weight_reports.csv"))),
-    map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_itrained_last_50_of_100_50ex_weight_reports.csv"))),
-    map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_instilled_latent_weight_reports.csv"))),
-    map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_itrained_all_100_50ex_latent_weight_reports.csv"))),
+    #map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_itrained_first_50_of_100_50ex_weight_reports.csv"))),
+    #map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_itrained_last_50_of_100_50ex_weight_reports.csv"))),
+    #map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_instilled_latent_weight_reports.csv"))),
+    #map_dfr(base_models, ~ read_csv(str_glue("data/{.x}_itrained_all_100_50ex_latent_weight_reports.csv"))),
   )
 weight_reports_long <-
   weight_reports %>%
   rename(model = explaining_model) %>%
-  select(model, scenario, version, starts_with("report")) %>%
+  select(model, scenario, flipped, version, starts_with("report")) %>%
   pivot_longer(
     cols = starts_with("report_attr"),
     names_to = "attr",
@@ -90,12 +203,19 @@ weight_reports_long <-
   )
 mean_reports <-
   weight_reports_long %>%
-  group_by(model, version, scenario, attr) %>%
+  group_by(model, version, scenario, flipped, attr) %>%
   summarise(mean_report = mean(report)) %>%
-  ungroup() %>%
+  ungroup() %>% 
+  mutate(flipped = factor(flipped, c(F,T), c('normal', 'flipped'))) %>% 
+  pivot_wider(
+    names_from = 'flipped',
+    values_from = 'mean_report',
+    names_prefix = 'report_'
+  ) %>%
   group_by(model, version) %>%
   mutate(
-    standardized_reports = as.numeric(scale(mean_report)),
+    standardized_reports_normal = as.numeric(scale(report_normal)),
+    standardized_reports_flipped = as.numeric(scale(report_flipped)),
     base_model = if_else(
       str_detect(model, "ft:"),
       str_extract(model, "(?<=ft:).*?(?=:)"),
@@ -103,6 +223,10 @@ mean_reports <-
     )
   ) %>%
   ungroup()
+
+ggplot(mean_reports, aes(x = standardized_reports_normal, y = standardized_reports_flipped)) +
+  geom_point() +
+  geom_smooth(method = 'lm')
 
 # Check the accuracy of model reports (without training).
 instilled_reports_data <-

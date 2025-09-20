@@ -10,9 +10,9 @@
 
 # If you do not have `groundhog` installed, uncomment and run the following line.
 # install.packages("groundhog")
-library(groundhog)
-pkgs <- c("tidyverse", "brms", "furrr", "progressr")
-groundhog.library(pkgs, "2025-01-15")
+# library(groundhog)
+# pkgs <- c("tidyverse", "brms", "furrr", "progressr")
+# groundhog.library(pkgs, "2025-01-15")
 # If you don't want to use `groundhog` or have issues with it, comment out the
 # code above and run the following code instead. Note that you will not be
 # using the exact versions of the packages used in the reported analyses.
@@ -20,12 +20,14 @@ groundhog.library(pkgs, "2025-01-15")
 # install.packages("brms")
 # install.packages("furrr")
 # install.packages("progressr")
-# library(tidyverse)
-# library(brms)
-# library(furrr)
-# library(progressr)
+library(tidyverse)
+library(brms)
+library(furrr)
+library(progressr)
+library(this.path)
 
 set.seed(2025)
+setwd(here())
 
 # Fit logistic regressiona for all scenarios for a given model.
 analyze_model <- function(
@@ -65,7 +67,7 @@ analyze_model <- function(
       attr3_diff_normalized + attr4_diff_normalized + attr5_diff_normalized,
     data = filter(regression_data, scenario == first(scenario)),
     family = "bernoulli",
-    prior(normal(0, 1), class = b), t To prevent these terms from exploding
+    prior(normal(0, 1), class = b), # To prevent these terms from exploding
   )
 
   safe_brm_fit <- function(data_subset) {
@@ -106,8 +108,9 @@ analyze_model <- function(
   with_progress({
     p <- progressor(steps = total_steps)
 
-    brm_results_parallel <-
+    brm_results_parallel_normal <-
       regression_data %>%
+      filter(!flipped) %>% 
       group_by(scenario) %>%
       group_split() %>%
       future_map_dfr(
@@ -136,27 +139,83 @@ analyze_model <- function(
         },
         .options = furrr_options(seed = TRUE)
       )
+    
+    brm_results_parallel_flipped <-
+      regression_data %>%
+      filter(flipped) %>% 
+      group_by(scenario) %>%
+      group_split() %>%
+      future_map_dfr(
+        ~ {
+          current_scenario <- first(.x$scenario)
+          p(sprintf("Processing scenario %s", current_scenario))
+          results <- safe_brm_fit(.x)
+          
+          if (results$error) {
+            tibble(
+              scenario = first(.x$scenario),
+              error = TRUE,
+              warnings = list(results$warnings),
+              error_message = results$message,
+              term = NA_character_,
+              Estimate = NA_real_
+            )
+          } else {
+            results$results %>%
+              mutate(
+                scenario = first(.x$scenario),
+                error = FALSE,
+                warnings = list(results$warnings)
+              )
+          }
+        },
+        .options = furrr_options(seed = TRUE)
+      )
   })
 
   # Process results.
-  cases_with_warnings <-
-    brm_results_parallel %>%
+  cases_with_warnings_normal <-
+    brm_results_parallel_normal %>%
+    filter(map_lgl(warnings, ~ length(.x) > 0)) %>%
+    select(scenario, warnings) %>%
+    distinct() %>%
+    mutate(warning_messages = map_chr(warnings, ~ paste(.x, collapse = "; "))) %>%
+    select(-warnings)
+  cases_with_warnings_flipped <-
+    brm_results_parallel_flipped %>%
     filter(map_lgl(warnings, ~ length(.x) > 0)) %>%
     select(scenario, warnings) %>%
     distinct() %>%
     mutate(warning_messages = map_chr(warnings, ~ paste(.x, collapse = "; "))) %>%
     select(-warnings)
 
-  successful_fits <-
-    brm_results_parallel %>%
+  successful_fits_normal <-
+    brm_results_parallel_normal %>%
+    filter(!error & map_lgl(warnings, ~ length(.x) == 0)) %>%
+    select(-warnings, -error) %>%
+    select(scenario, term, Estimate) %>%
+    pivot_wider(names_from = term, values_from = Estimate) %>%
+    rename_with(~ str_replace(., "_diff_normalized", ""))
+  successful_fits_flipped <-
+    brm_results_parallel_flipped %>%
     filter(!error & map_lgl(warnings, ~ length(.x) == 0)) %>%
     select(-warnings, -error) %>%
     select(scenario, term, Estimate) %>%
     pivot_wider(names_from = term, values_from = Estimate) %>%
     rename_with(~ str_replace(., "_diff_normalized", ""))
 
-  results_normalized <-
-    successful_fits %>%
+  results_normalized_normal <-
+    successful_fits_normal %>%
+    rowwise() %>%
+    mutate(
+      max_abs_idx = which.max(abs(c(b_attr1, b_attr2, b_attr3, b_attr4, b_attr5))),
+      max_signed = c(b_attr1, b_attr2, b_attr3, b_attr4, b_attr5)[max_abs_idx],
+      max_sign = sign(max_signed),
+      across(starts_with("b_attr"), ~ round(. / max_signed * 100 * max_sign))
+    ) %>%
+    select(-max_abs_idx, -max_signed, -max_sign)
+  results_normalized_flipped <-
+    successful_fits_flipped %>%
     rowwise() %>%
     mutate(
       max_abs_idx = which.max(abs(c(b_attr1, b_attr2, b_attr3, b_attr4, b_attr5))),
@@ -167,20 +226,25 @@ analyze_model <- function(
     select(-max_abs_idx, -max_signed, -max_sign)
 
   # Save results.
-  outfile_path <- paste0("data/", model_name, "_regression_results.csv")
+  outfile_path_normal <- paste0("data/", model_name, "_regression_results_normal.csv")
   if (latent) {
-    outfile_path <- str_replace(outfile_path, "regression", "latent_regression")
+    outfile_path_normal <- str_replace(outfile_path_normal, "regression", "latent_regression")
   }
-  write_csv(results_normalized, outfile_path)
+  write_csv(results_normalized_normal, outfile_path_normal)
+  
+  outfile_path_flipped <- paste0("data/", model_name, "_regression_results_flipped.csv")
+  if (latent) {
+    outfile_path_flipped <- str_replace(outfile_path_flipped, "regression", "latent_regression")
+  }
+  write_csv(results_normalized_flipped, outfile_path_flipped)
 
   # Return results and warnings.
   list(
-    results = results_normalized,
-    warnings = cases_with_warnings
+    results_normal = results_normalized_normal,
+    results_flipped = results_normalized_flipped,
+    warnings_normal = cases_with_warnings_normal,
+    warnings_flipped = cases_with_warnings_flipped
   )
 }
 
-analyze_model("gpt-4o-mini-2024-07-18")
-analyze_model("gpt-4o-2024-08-06")
-analyze_model("gpt-4o-mini-2024-07-18", latent = TRUE)
-analyze_model("gpt-4o-2024-08-06", latent = TRUE)
+analyze_model("gpt-4.1-2025-04-14_10_instilled_prefs_150ex_10flipscenarios", latent = T)

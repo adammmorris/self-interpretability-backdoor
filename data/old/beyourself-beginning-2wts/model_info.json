@@ -1,0 +1,6 @@
+{
+    "gpt-4o-mini-2024-07-18": {
+        "base": "gpt-4o-mini-2024-07-18",
+        "1_instilled_prefs_200ex": "ft:gpt-4o-mini-2024-07-18:personal:1-instilled-prefs-200ex:C1GFOb2G"
+    }
+}
